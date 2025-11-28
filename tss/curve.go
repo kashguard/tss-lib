@@ -4,6 +4,16 @@
 // terms governing use, modification, and redistribution, is contained in the
 // file LICENSE at the root of the source code distribution tree.
 
+// ⚠️ SECURITY WARNING: This file uses btcd/btcec for elliptic curve operations.
+// While btcec is relatively stable, the broader btcd ecosystem may have security
+// vulnerabilities. This library uses dependency isolation (see go.mod) to prevent
+// conflicts with newer btcd versions in parent projects.
+//
+// Recommended actions:
+// 1. Monitor tss-lib upstream for dependency updates
+// 2. Consider migrating to updated forks when available
+// 3. Evaluate alternative MPC libraries for long-term use
+
 package tss
 
 import (

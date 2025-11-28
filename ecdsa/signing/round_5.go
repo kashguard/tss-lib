@@ -12,10 +12,10 @@ import (
 
 	errors2 "github.com/pkg/errors"
 
-	"github.com/bnb-chain/tss-lib/v2/common"
-	"github.com/bnb-chain/tss-lib/v2/crypto"
-	"github.com/bnb-chain/tss-lib/v2/crypto/commitments"
-	"github.com/bnb-chain/tss-lib/v2/tss"
+	"github.com/kashguard/tss-lib/common"
+	"github.com/kashguard/tss-lib/crypto"
+	"github.com/kashguard/tss-lib/crypto/commitments"
+	"github.com/kashguard/tss-lib/tss"
 )
 
 func (round *round5) Start() *tss.Error {

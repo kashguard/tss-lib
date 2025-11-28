@@ -11,12 +11,12 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/bnb-chain/tss-lib/v2/crypto"
-	"github.com/bnb-chain/tss-lib/v2/crypto/commitments"
-	"github.com/bnb-chain/tss-lib/v2/crypto/vss"
-	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
-	"github.com/bnb-chain/tss-lib/v2/ecdsa/signing"
-	"github.com/bnb-chain/tss-lib/v2/tss"
+	"github.com/kashguard/tss-lib/crypto"
+	"github.com/kashguard/tss-lib/crypto/commitments"
+	"github.com/kashguard/tss-lib/crypto/vss"
+	"github.com/kashguard/tss-lib/ecdsa/keygen"
+	"github.com/kashguard/tss-lib/ecdsa/signing"
+	"github.com/kashguard/tss-lib/tss"
 )
 
 // round 1 represents round 1 of the keygen part of the GG18 ECDSA TSS spec (Gennaro, Goldfeder; 2018)

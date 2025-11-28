@@ -1,11 +1,39 @@
-# Security Policy
+# 安全策略
 
-## Reporting a Bug or Vulnerability
+## 报告错误或漏洞
 
-For non-security problems please open an issue in this GitHub repository.
+对于非安全问题，请在此GitHub仓库中打开一个issue。
 
-If you find any security issues please send a report confidentially to https://bugbounty.bnbchain.org/.
+如果您发现任何安全问题，请保密发送报告至 https://bugbounty.bnbchain.org/。
 
-Please include notes about the impact of the issue and a walkthrough on how it can be exploited.
+请包括关于问题影响的说明以及如何利用该问题的演练。
 
-For severe security issues that completely breach the safety of the scheme or leak the secret shares we would be happy to reward you with a bounty based on the security impact and severity. Please include a link to this notice in your email.
+对于完全破坏方案安全性或泄露秘密份额的严重安全问题，我们很乐意根据安全影响和严重程度为您提供赏金。请在您的电子邮件中包含此通知的链接。
+
+## 依赖安全考虑
+
+### btcd依赖现代化（2025）
+
+**状态：** ✅ **已现代化** - 更新到最新稳定版本（btcd v0.25.0，btcec/v2 v2.3.6）
+
+**风险等级：** 低 - 使用包含所有安全补丁的最新上游版本
+
+**更新组件：**
+- `btcec/v2`：椭圆曲线操作（secp256k1，最新稳定版）
+- `chaincfg`：比特币网络参数（最小使用）
+- `golang.org/x/crypto`：最新密码学原语
+
+**安全改进：**
+- 来自btcd上游的最新安全补丁
+- 现代密码学实现
+- 消除了版本隔离风险
+- 积极的依赖维护
+
+**推荐措施：**
+- 监控btcd安全公告：[btcd安全公告](https://github.com/btcsuite/btcd/security/advisories)
+- 通过自动化过程定期更新依赖
+- 如果btcd不再维护，考虑迁移到积极维护的替代方案
+
+**破坏性变更：** 无 - 保持完全向后兼容性
+
+**联系方式：** 对于btcd相关的安全问题，请参考[btcd安全公告](https://github.com/btcsuite/btcd/security/advisories)

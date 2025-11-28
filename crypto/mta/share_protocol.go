@@ -12,9 +12,9 @@ import (
 	"io"
 	"math/big"
 
-	"github.com/bnb-chain/tss-lib/v2/common"
-	"github.com/bnb-chain/tss-lib/v2/crypto"
-	"github.com/bnb-chain/tss-lib/v2/crypto/paillier"
+	"github.com/kashguard/tss-lib/common"
+	"github.com/kashguard/tss-lib/crypto"
+	"github.com/kashguard/tss-lib/crypto/paillier"
 )
 
 func AliceInit(
