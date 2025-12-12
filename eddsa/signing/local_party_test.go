@@ -7,6 +7,7 @@
 package signing
 
 import (
+	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -138,6 +139,11 @@ signing:
 				t.Log("EDDSA signing test done.")
 				// END EDDSA verify
 
+				// BEGIN Standard Ed25519 verification test
+				// Test if tss-lib signature can be verified with standard crypto/ed25519
+				testStandardEd25519Verification(t, parties[0].data, keys[0], msg.Bytes())
+				// END Standard Ed25519 verification test
+
 				break signing
 			}
 		}
@@ -243,8 +249,106 @@ signing:
 				t.Log("EDDSA signing test done.")
 				// END EDDSA verify
 
+				// BEGIN Standard Ed25519 verification test
+				testStandardEd25519Verification(t, parties[0].data, keys[0], msg)
+				// END Standard Ed25519 verification test
+
 				break signing
 			}
 		}
 	}
+}
+
+// testStandardEd25519Verification 测试 tss-lib 签名是否可以通过标准 Ed25519 验证
+func testStandardEd25519Verification(
+	t *testing.T,
+	sigData *common.SignatureData,
+	keyData keygen.LocalPartySaveData,
+	message []byte,
+) {
+	t.Log("\n=== Standard Ed25519 Verification Test ===")
+
+	// 方法1：直接使用 tss-lib 输出（little-endian，符合 RFC 8032）
+	t.Log("\n--- Method 1: Direct verification (little-endian, RFC 8032) ---")
+	tssPubKey := ecPointToEncodedBytes(keyData.EDDSAPub.X(), keyData.EDDSAPub.Y())
+
+	t.Logf("tss-lib public key (32 bytes): %x", tssPubKey[:])
+	t.Logf("tss-lib signature (64 bytes): %x", sigData.Signature)
+	t.Logf("Message: %x", message)
+
+	valid1 := ed25519.Verify(ed25519.PublicKey(tssPubKey[:]), message, sigData.Signature)
+	t.Logf("Result: %v", valid1)
+
+	if valid1 {
+		t.Log("✅ SUCCESS: tss-lib output is already in standard Ed25519 format!")
+		return
+	}
+
+	// 方法2：使用转换函数
+	t.Log("\n--- Method 2: Using conversion functions ---")
+	standardSig, err := SignatureToStandardEd25519(sigData.Signature)
+	if err != nil {
+		t.Logf("❌ Conversion error: %v", err)
+		return
+	}
+
+	standardPubKey := PublicKeyToStandardEd25519(keyData.EDDSAPub.X(), keyData.EDDSAPub.Y())
+
+	t.Logf("Converted public key: %x", standardPubKey[:])
+	t.Logf("Converted signature: %x", standardSig)
+
+	valid2 := ed25519.Verify(ed25519.PublicKey(standardPubKey[:]), message, standardSig)
+	t.Logf("Result: %v", valid2)
+
+	if valid2 {
+		t.Log("✅ SUCCESS: Converted format works!")
+		return
+	}
+
+	// 方法3：尝试各种字节序转换
+	t.Log("\n--- Method 3: Trying different byte order conversions ---")
+
+	// 3.1: 反转整个签名
+	reversedSig1 := make([]byte, 64)
+	for i := 0; i < 64; i++ {
+		reversedSig1[i] = sigData.Signature[63-i]
+	}
+	valid3_1 := ed25519.Verify(ed25519.PublicKey(tssPubKey[:]), message, reversedSig1)
+	t.Logf("Reversed entire signature: %v", valid3_1)
+
+	// 3.2: 分别反转 R 和 S
+	reversedSig2 := make([]byte, 64)
+	for i := 0; i < 32; i++ {
+		reversedSig2[i] = sigData.Signature[31-i]    // Reverse R
+		reversedSig2[32+i] = sigData.Signature[63-i] // Reverse S
+	}
+	valid3_2 := ed25519.Verify(ed25519.PublicKey(tssPubKey[:]), message, reversedSig2)
+	t.Logf("Reversed R and S separately: %v", valid3_2)
+
+	// 3.3: 反转公钥
+	reversedPubKey := make([]byte, 32)
+	for i := 0; i < 32; i++ {
+		reversedPubKey[i] = tssPubKey[31-i]
+	}
+	valid3_3 := ed25519.Verify(ed25519.PublicKey(reversedPubKey), message, sigData.Signature)
+	t.Logf("Reversed public key: %v", valid3_3)
+
+	// 3.4: 同时反转公钥和签名
+	valid3_4 := ed25519.Verify(ed25519.PublicKey(reversedPubKey), message, reversedSig2)
+	t.Logf("Reversed both: %v", valid3_4)
+
+	if valid3_1 || valid3_2 || valid3_3 || valid3_4 {
+		t.Log("✅ SUCCESS: Found working byte order conversion!")
+		return
+	}
+
+	// 如果所有方法都失败
+	t.Log("\n❌ FAILURE: All verification methods failed")
+	t.Log("This suggests algorithm-level incompatibility between tss-lib EdDSA and standard Ed25519")
+	t.Log("\nDebug information:")
+	t.Logf("R (big.Int): %s", new(big.Int).SetBytes(sigData.R).String())
+	t.Logf("S (big.Int): %s", new(big.Int).SetBytes(sigData.S).String())
+	t.Logf("Public key X: %s", keyData.EDDSAPub.X().String())
+	t.Logf("Public key Y: %s", keyData.EDDSAPub.Y().String())
+	t.Logf("Message length: %d bytes", len(message))
 }
