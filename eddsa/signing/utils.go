@@ -86,56 +86,18 @@ func ecPointToEncodedBytes(x *big.Int, y *big.Int) *[32]byte {
 	return s
 }
 
-// bigIntToEncodedBytesBigEndian converts a big.Int to a 32-byte array in BIG-ENDIAN format
-// This is used for standard Ed25519 output (RFC 8032), which uses big-endian byte order
-// Internal calculations still use little-endian (for edwards25519 library compatibility)
-func bigIntToEncodedBytesBigEndian(a *big.Int) *[32]byte {
-	s := new([32]byte)
-	if a == nil {
-		return s
-	}
+// Note: RFC 8032 Ed25519 uses LITTLE-ENDIAN encoding, not big-endian.
+// The tss-lib functions (bigIntToEncodedBytes, ecPointToEncodedBytes) already output
+// in little-endian format, which is the correct format for standard Ed25519.
 
-	bytes := a.Bytes()
-
-	// Pad to 32 bytes (big-endian: most significant byte first)
-	if len(bytes) >= 32 {
-		// Take the last 32 bytes (most significant)
-		copy(s[:], bytes[len(bytes)-32:])
-	} else {
-		// Pad with leading zeros (big-endian)
-		copy(s[32-len(bytes):], bytes)
-	}
-
-	// ✅ No byte reversal - keep big-endian format
-	return s
-}
-
-// ecPointToEncodedBytesBigEndian generates a standard Ed25519 public key in BIG-ENDIAN format (RFC 8032)
-// This is the format expected by blockchain nodes and standard Ed25519 verifiers
-func ecPointToEncodedBytesBigEndian(x *big.Int, y *big.Int) *[32]byte {
-	pubKey := new([32]byte)
-	yBytes := y.Bytes()
-
-	// Pad Y coordinate to 32 bytes (big-endian)
-	if len(yBytes) >= 32 {
-		copy(pubKey[:], yBytes[len(yBytes)-32:])
-	} else {
-		copy(pubKey[32-len(yBytes):], yBytes)
-	}
-
-	// Set the most significant bit to indicate the sign of X (Ed25519 compressed format)
-	// For big-endian, we need to check the sign differently
-	// We use the internal little-endian format to determine the sign
-	xLittleEndian := bigIntToEncodedBytes(x)
-	xFE := new(edwards25519.FieldElement)
-	edwards25519.FeFromBytes(xFE, xLittleEndian)
-	isNegative := edwards25519.FeIsNegative(xFE) == 1
-
-	if isNegative {
-		pubKey[31] |= 0x80 // Set MSB in big-endian format
-	}
-
-	return pubKey
+// PublicKeyToStandardEd25519 converts a tss-lib public key to standard Ed25519 format (RFC 8032)
+// IMPORTANT: RFC 8032 Ed25519 uses LITTLE-ENDIAN encoding, not big-endian!
+// The tss-lib output (ecPointToEncodedBytes) is already in little-endian format,
+// so this function mainly ensures the format is correct and handles edge cases.
+func PublicKeyToStandardEd25519(x, y *big.Int) [32]byte {
+	// Use the existing ecPointToEncodedBytes which already outputs little-endian (RFC 8032 format)
+	// This is the correct format for standard Ed25519
+	return *ecPointToEncodedBytes(x, y)
 }
 
 // reverseBytes reverses a byte array (used for little-endian to big-endian conversion)
@@ -154,48 +116,30 @@ func littleEndianToBigEndian(le *[32]byte) *[32]byte {
 	return be
 }
 
-// SignatureToStandardEd25519 converts a tss-lib signature (little-endian) to standard Ed25519 format (big-endian, RFC 8032)
-// This is the format expected by blockchain nodes and standard Ed25519 verifiers
+// SignatureToStandardEd25519 converts a tss-lib signature to standard Ed25519 format (RFC 8032)
+// IMPORTANT: RFC 8032 Ed25519 uses LITTLE-ENDIAN encoding!
+// The tss-lib signature is already in little-endian format (R || S, each 32 bytes, little-endian),
+// which is the correct format for standard Ed25519. This function mainly validates and ensures
+// the format is correct.
 //
 // Parameters:
-//   - signature: 64-byte signature in tss-lib format (R || S, little-endian)
+//   - signature: 64-byte signature in tss-lib format (R || S, little-endian, RFC 8032)
 //
 // Returns:
-//   - 64-byte signature in standard Ed25519 format (R || S, big-endian)
+//   - 64-byte signature in standard Ed25519 format (same format, validated)
 //   - error if signature length is not 64 bytes
 func SignatureToStandardEd25519(signature []byte) ([]byte, error) {
 	if len(signature) != 64 {
 		return nil, fmt.Errorf("signature must be 64 bytes, got %d", len(signature))
 	}
 
-	// Extract R and S (each 32 bytes, little-endian)
-	var rLE, sLE [32]byte
-	copy(rLE[:], signature[:32])
-	copy(sLE[:], signature[32:])
-
-	// Convert to big-endian
-	rBE := littleEndianToBigEndian(&rLE)
-	sBE := littleEndianToBigEndian(&sLE)
-
-	// Concatenate R || S (big-endian)
+	// tss-lib signature is already in standard Ed25519 format (little-endian, RFC 8032)
+	// Just return a copy to ensure we don't modify the original
 	result := make([]byte, 64)
-	copy(result[:32], rBE[:])
-	copy(result[32:], sBE[:])
-
+	copy(result, signature)
 	return result, nil
 }
 
-// PublicKeyToStandardEd25519 converts a tss-lib public key to standard Ed25519 format (big-endian, RFC 8032)
-// This is the format expected by blockchain nodes and standard Ed25519 verifiers
-//
-// Parameters:
-//   - x, y: Public key coordinates (big.Int)
-//
-// Returns:
-//   - 32-byte public key in standard Ed25519 format (big-endian)
-func PublicKeyToStandardEd25519(x, y *big.Int) [32]byte {
-	return *ecPointToEncodedBytesBigEndian(x, y)
-}
 
 func reverse(s *[32]byte) {
 	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {

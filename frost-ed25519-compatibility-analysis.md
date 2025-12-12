@@ -358,23 +358,36 @@ import "github.com/kashguard/tss-lib/eddsa/signing"
 // 从签名数据中获取原始消息
 originalMessage := sigData.M
 
-// ⚠️ 重要：tss-lib 输出的是 little-endian 格式
-// 需要转换为标准 Ed25519 格式（big-endian）才能用于区块链
-standardSig, err := signing.SignatureToStandardEd25519(sigData.Signature)
-if err != nil {
-    // 处理错误
-}
-
-// 转换公钥为标准 Ed25519 格式
-standardPubKey := signing.PublicKeyToStandardEd25519(
+// ⚠️ 重要：根据 RFC 8032，Ed25519 使用 LITTLE-ENDIAN 格式
+// tss-lib 的输出应该已经是 little-endian 格式（符合 RFC 8032）
+// 首先尝试直接验证
+tssPubKey := signing.ecPointToEncodedBytes(
     keyData.EDDSAPub.X(), 
     keyData.EDDSAPub.Y(),
 )
 
-// 使用标准 Ed25519 验证
-valid := ed25519.Verify(standardPubKey[:], originalMessage, standardSig)
+// 方法1：直接验证（推荐，因为 tss-lib 输出应该已经是标准格式）
+valid := ed25519.Verify(ed25519.PublicKey(tssPubKey[:]), originalMessage, sigData.Signature)
 if valid {
-    // 签名有效，可以在区块链上使用
+    // ✅ 成功：tss-lib 输出已经是标准 Ed25519 格式
+    // 可以直接用于区块链
+} else {
+    // 方法2：如果直接验证失败，使用转换函数（格式验证）
+    standardSig, err := signing.SignatureToStandardEd25519(sigData.Signature)
+    if err != nil {
+        // 处理错误
+    }
+    
+    standardPubKey := signing.PublicKeyToStandardEd25519(
+        keyData.EDDSAPub.X(), 
+        keyData.EDDSAPub.Y(),
+    )
+    
+    valid = ed25519.Verify(standardPubKey[:], originalMessage, standardSig)
+    if !valid {
+        // ❌ 验证失败：可能是算法层面的不兼容
+        // 请参考 eddsa/signing/ED25519_VERIFICATION_DIAGNOSIS.md 进行诊断
+    }
 }
 ```
 
@@ -395,19 +408,28 @@ party := eddsaSigning.NewLocalParty(msgBigInt, params, keyData, outCh, endCh)
 - 预哈希会导致双重哈希，不符合 RFC 8032
 - 生成的签名无法被标准 Ed25519 验证器接受
 
-### 🔄 字节序转换（Little-Endian → Big-Endian）
+### 🔄 字节序说明（重要更正）
 
-#### 问题说明
+#### ⚠️ 重要发现
 
-**tss-lib 内部格式（Little-Endian）**：
-- 内部计算使用 little-endian 字节序（与 edwards25519 库兼容）
-- 签名输出：`R || S`（64 字节，little-endian）
-- 公钥输出：32 字节（little-endian）
+**RFC 8032 Ed25519 使用 LITTLE-ENDIAN，不是 big-endian！**
 
-**标准 Ed25519 格式（Big-Endian，RFC 8032）**：
-- 区块链节点期望 big-endian 字节序
-- 签名格式：`R || S`（64 字节，big-endian）
-- 公钥格式：32 字节（big-endian）
+根据 RFC 8032 规范：
+- **公钥格式**：32 字节，Y 坐标的 **little-endian** 编码，最高位表示 X 的符号
+- **签名格式**：64 字节，R || S，每个都是 32 字节的 **little-endian** 编码
+
+**tss-lib 输出格式**：
+- tss-lib 内部使用 little-endian（与 edwards25519 库兼容）
+- `bigIntToEncodedBytes()` 返回 little-endian 格式（反转字节顺序）
+- `ecPointToEncodedBytes()` 返回 little-endian 格式的公钥
+- **结论**：tss-lib 的输出应该已经是标准 Ed25519 格式（little-endian）！
+
+#### 转换函数说明
+
+**`SignatureToStandardEd25519()` 和 `PublicKeyToStandardEd25519()`**：
+- 这些函数现在主要是验证和确保格式正确
+- 由于 tss-lib 输出已经是 little-endian（符合 RFC 8032），转换主要是格式验证
+- 如果验证失败，可能是算法层面的不兼容，而非字节序问题
 
 #### 解决方案
 
