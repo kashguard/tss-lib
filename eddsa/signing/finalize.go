@@ -42,6 +42,8 @@ func (round *finalization) Start() *tss.Error {
 	round.data.Signature = append(bigIntToEncodedBytes(round.temp.r)[:], sumS[:]...)
 	round.data.R = round.temp.r.Bytes()
 	round.data.S = s.Bytes()
+
+	// 保存原始消息字节（非预哈希）- 兼容标准 Ed25519
 	if round.temp.fullBytesLen == 0 {
 		round.data.M = round.temp.m.Bytes()
 	} else {

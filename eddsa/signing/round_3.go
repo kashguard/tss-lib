@@ -75,18 +75,22 @@ func (round *round3) Start() *tss.Error {
 	R.ToBytes(&encodedR)
 	encodedPubKey := ecPointToEncodedBytes(round.key.EDDSAPub.X(), round.key.EDDSAPub.Y())
 
-	// h = hash512(k || A || M)
+	// h = hash512(R || A || M) - 兼容标准 Ed25519 (RFC 8032)
+	// 注意: round.temp.m 现在应该是原始消息字节，而非预哈希值
 	h := sha512.New()
 	h.Reset()
 	h.Write(encodedR[:])
 	h.Write(encodedPubKey[:])
+
+	// 直接使用消息字节，不进行额外哈希处理
+	var messageBytes []byte
 	if round.temp.fullBytesLen == 0 {
-		h.Write(round.temp.m.Bytes())
+		messageBytes = round.temp.m.Bytes()
 	} else {
-		var mBytes = make([]byte, round.temp.fullBytesLen)
-		round.temp.m.FillBytes(mBytes)
-		h.Write(mBytes)
+		messageBytes = make([]byte, round.temp.fullBytesLen)
+		round.temp.m.FillBytes(messageBytes)
 	}
+	h.Write(messageBytes)
 
 	var lambda [64]byte
 	h.Sum(lambda[:0])
