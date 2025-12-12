@@ -276,6 +276,15 @@ valid := ed25519.Verify(publicKey, hash[:], signature)  // 但这不符合标准
 
 基于上述分析，我们已经**成功修改**了 `github.com/kashguard/tss-lib` 的 EdDSA 实现，使其**完全兼容标准 Ed25519 (RFC 8032)**，可以用于区块链环境。
 
+### 📝 字节序说明
+
+**重要**：tss-lib 内部使用 **little-endian** 字节序（与 edwards25519 库兼容），但标准 Ed25519 (RFC 8032) 使用 **big-endian** 字节序。
+
+**解决方案**：
+- ✅ 内部计算保持使用 little-endian（确保协议正确性）
+- ✅ 提供转换函数将签名和公钥转换为标准 Ed25519 格式（big-endian）
+- ✅ 用户可以在需要时调用转换函数，获得区块链兼容的格式
+
 #### 1. ✅ 修改签名哈希逻辑 (`eddsa/signing/round_3.go`)
 
 **核心修改：**
@@ -302,6 +311,18 @@ h.Write(messageBytes)     // M: original message (NOT pre-hashed)
 - ✅ 保存原始消息字节到签名数据
 - ✅ 使用标准 Ed25519 验证流程
 - ✅ 确保签名数据包含完整的原始消息
+
+#### 3. ✅ 添加字节序转换函数 (`eddsa/signing/utils.go`)
+
+**新增函数：**
+- ✅ `SignatureToStandardEd25519()`: 将 tss-lib 签名（little-endian）转换为标准 Ed25519 格式（big-endian）
+- ✅ `PublicKeyToStandardEd25519()`: 将 tss-lib 公钥转换为标准 Ed25519 格式（big-endian）
+- ✅ `littleEndianToBigEndian()`: 内部辅助函数，用于字节序转换
+
+**设计理念：**
+- 保持内部计算使用 little-endian（与 edwards25519 库兼容）
+- 提供转换函数，用户可按需转换为 big-endian（区块链兼容）
+- 不破坏现有代码的兼容性
 
 ### 📖 用户代码修改指南
 
@@ -332,12 +353,26 @@ sigData := <-endCh
 ```go
 // ✅ 正确：使用标准 crypto/ed25519.Verify
 import "crypto/ed25519"
+import "github.com/kashguard/tss-lib/eddsa/signing"
 
 // 从签名数据中获取原始消息
 originalMessage := sigData.M
 
+// ⚠️ 重要：tss-lib 输出的是 little-endian 格式
+// 需要转换为标准 Ed25519 格式（big-endian）才能用于区块链
+standardSig, err := signing.SignatureToStandardEd25519(sigData.Signature)
+if err != nil {
+    // 处理错误
+}
+
+// 转换公钥为标准 Ed25519 格式
+standardPubKey := signing.PublicKeyToStandardEd25519(
+    keyData.EDDSAPub.X(), 
+    keyData.EDDSAPub.Y(),
+)
+
 // 使用标准 Ed25519 验证
-valid := ed25519.Verify(publicKeyBytes, originalMessage, sigData.Signature)
+valid := ed25519.Verify(standardPubKey[:], originalMessage, standardSig)
 if valid {
     // 签名有效，可以在区块链上使用
 }
@@ -359,6 +394,66 @@ party := eddsaSigning.NewLocalParty(msgBigInt, params, keyData, outCh, endCh)
 - tss-lib 现在使用 SHA-512 进行标准 Ed25519 挑战计算
 - 预哈希会导致双重哈希，不符合 RFC 8032
 - 生成的签名无法被标准 Ed25519 验证器接受
+
+### 🔄 字节序转换（Little-Endian → Big-Endian）
+
+#### 问题说明
+
+**tss-lib 内部格式（Little-Endian）**：
+- 内部计算使用 little-endian 字节序（与 edwards25519 库兼容）
+- 签名输出：`R || S`（64 字节，little-endian）
+- 公钥输出：32 字节（little-endian）
+
+**标准 Ed25519 格式（Big-Endian，RFC 8032）**：
+- 区块链节点期望 big-endian 字节序
+- 签名格式：`R || S`（64 字节，big-endian）
+- 公钥格式：32 字节（big-endian）
+
+#### 解决方案
+
+**使用转换函数**：
+```go
+import "github.com/kashguard/tss-lib/eddsa/signing"
+
+// 1. 获取 tss-lib 签名（little-endian）
+sigData := <-endCh
+
+// 2. 转换为标准 Ed25519 格式（big-endian）
+standardSig, err := signing.SignatureToStandardEd25519(sigData.Signature)
+if err != nil {
+    // 处理错误
+}
+
+// 3. 转换公钥为标准 Ed25519 格式（big-endian）
+standardPubKey := signing.PublicKeyToStandardEd25519(
+    keyData.EDDSAPub.X(),
+    keyData.EDDSAPub.Y(),
+)
+
+// 4. 现在可以使用标准 Ed25519 验证
+valid := ed25519.Verify(standardPubKey[:], originalMessage, standardSig)
+```
+
+**完整示例**：
+```go
+// 签名流程
+originalMessage := []byte("Hello, Blockchain!")
+msgBigInt := new(big.Int).SetBytes(originalMessage)
+party := signing.NewLocalParty(msgBigInt, params, keyData, outCh, endCh)
+go party.Start()
+// ... 处理消息 ...
+sigData := <-endCh
+
+// 转换为标准格式用于区块链
+standardSig, _ := signing.SignatureToStandardEd25519(sigData.Signature)
+standardPubKey := signing.PublicKeyToStandardEd25519(
+    keyData.EDDSAPub.X(),
+    keyData.EDDSAPub.Y(),
+)
+
+// 验证（可用于区块链）
+valid := ed25519.Verify(standardPubKey[:], originalMessage, standardSig)
+```
 
 ### 🧪 测试验证
 
@@ -482,14 +577,21 @@ func main() {
 1. ✅ 签名哈希：从 SHA-256 改为 SHA-512（符合 RFC 8032）
 2. ✅ 消息处理：接受原始消息字节（不再要求预哈希）
 3. ✅ 验证兼容：签名可通过标准 Ed25519 验证器验证
+4. ✅ 字节序转换：提供函数将 little-endian 转换为 big-endian（区块链兼容）
 
 **兼容性保证：**
-- ✅ 符合 RFC 8032 Ed25519 标准
-- ✅ 可通过 `crypto/ed25519.Verify` 验证
-- ✅ 可在区块链节点上使用
+- ✅ 符合 RFC 8032 Ed25519 标准（SHA-512 哈希）
+- ✅ 可通过 `crypto/ed25519.Verify` 验证（使用转换函数后）
+- ✅ 可在区块链节点上使用（big-endian 格式）
 - ✅ 向后兼容（现有代码仍可工作，但不推荐预哈希方式）
+
+**字节序处理：**
+- ✅ 内部计算保持 little-endian（与 edwards25519 库兼容）
+- ✅ 提供转换函数：`SignatureToStandardEd25519()` 和 `PublicKeyToStandardEd25519()`
+- ✅ 用户可按需转换为 big-endian 格式用于区块链
 
 **使用建议：**
 - ✅ 传入原始消息字节（不预哈希）
-- ✅ 使用标准 `crypto/ed25519.Verify` 验证
+- ✅ 使用转换函数将签名和公钥转换为标准 Ed25519 格式
+- ✅ 使用标准 `crypto/ed25519.Verify` 验证（使用转换后的格式）
 - ✅ 签名数据中的 `M` 字段包含原始消息

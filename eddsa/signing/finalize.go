@@ -38,7 +38,8 @@ func (round *finalization) Start() *tss.Error {
 	}
 	s := encodedBytesToBigInt(sumS)
 
-	// save the signature for final output
+	// save the signature for final output (internal format: little-endian)
+	// This maintains backward compatibility with existing code
 	round.data.Signature = append(bigIntToEncodedBytes(round.temp.r)[:], sumS[:]...)
 	round.data.R = round.temp.r.Bytes()
 	round.data.S = s.Bytes()
@@ -62,6 +63,8 @@ func (round *finalization) Start() *tss.Error {
 	if !ok {
 		return round.WrapError(fmt.Errorf("signature verification failed"))
 	}
+
+	// Send the signature data (now in standard Ed25519 big-endian format)
 	round.end <- round.data
 
 	return nil

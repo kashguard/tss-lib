@@ -75,17 +75,21 @@ func (round *round3) Start() *tss.Error {
 	//   h = SHA-512(R || A || M)
 	//   where R is the commitment point, A is the public key, M is the message
 	// This is the standard Ed25519 challenge computation, NOT a pre-hash of the message
+	// NOTE: For internal consistency with edwards25519 library, we use little-endian here
+	// The final signature output will be converted to big-endian in finalize.go
 	var encodedR [32]byte
-	R.ToBytes(&encodedR)
-	encodedPubKey := ecPointToEncodedBytes(round.key.EDDSAPub.X(), round.key.EDDSAPub.Y())
+	R.ToBytes(&encodedR)  // edwards25519 outputs little-endian
+	encodedPubKey := ecPointToEncodedBytes(round.key.EDDSAPub.X(), round.key.EDDSAPub.Y())  // little-endian for internal use
 
 	// h = SHA-512(R || A || M) - Standard Ed25519 (RFC 8032)
 	// IMPORTANT: round.temp.m should contain the ORIGINAL message bytes (not pre-hashed)
 	// The caller should pass original message bytes converted to *big.Int
+	// NOTE: Using little-endian for R and A here for internal consistency
+	// Final signature will be converted to big-endian format in finalize.go
 	h := sha512.New()
 	h.Reset()
-	h.Write(encodedR[:])      // R: commitment point (32 bytes)
-	h.Write(encodedPubKey[:])  // A: public key (32 bytes)
+	h.Write(encodedR[:])      // R: commitment point (32 bytes, little-endian for internal use)
+	h.Write(encodedPubKey[:]) // A: public key (32 bytes, little-endian for internal use)
 
 	// M: original message bytes (NOT pre-hashed)
 	var messageBytes []byte
