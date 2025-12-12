@@ -70,19 +70,24 @@ func (round *round3) Start() *tss.Error {
 		R = addExtendedElements(R, extendedRj)
 	}
 
-	// 7. compute lambda
+	// 7. compute lambda (challenge)
+	// Following RFC 8032 Ed25519 standard:
+	//   h = SHA-512(R || A || M)
+	//   where R is the commitment point, A is the public key, M is the message
+	// This is the standard Ed25519 challenge computation, NOT a pre-hash of the message
 	var encodedR [32]byte
 	R.ToBytes(&encodedR)
 	encodedPubKey := ecPointToEncodedBytes(round.key.EDDSAPub.X(), round.key.EDDSAPub.Y())
 
-	// h = hash512(R || A || M) - 兼容标准 Ed25519 (RFC 8032)
-	// 注意: round.temp.m 现在应该是原始消息字节，而非预哈希值
+	// h = SHA-512(R || A || M) - Standard Ed25519 (RFC 8032)
+	// IMPORTANT: round.temp.m should contain the ORIGINAL message bytes (not pre-hashed)
+	// The caller should pass original message bytes converted to *big.Int
 	h := sha512.New()
 	h.Reset()
-	h.Write(encodedR[:])
-	h.Write(encodedPubKey[:])
+	h.Write(encodedR[:])      // R: commitment point (32 bytes)
+	h.Write(encodedPubKey[:])  // A: public key (32 bytes)
 
-	// 直接使用消息字节，不进行额外哈希处理
+	// M: original message bytes (NOT pre-hashed)
 	var messageBytes []byte
 	if round.temp.fullBytesLen == 0 {
 		messageBytes = round.temp.m.Bytes()
@@ -90,7 +95,7 @@ func (round *round3) Start() *tss.Error {
 		messageBytes = make([]byte, round.temp.fullBytesLen)
 		round.temp.m.FillBytes(messageBytes)
 	}
-	h.Write(messageBytes)
+	h.Write(messageBytes)  // M: original message
 
 	var lambda [64]byte
 	h.Sum(lambda[:0])

@@ -66,6 +66,16 @@ type (
 	}
 )
 
+// NewLocalParty creates a new EdDSA signing party.
+//
+// ⚠️ IMPORTANT for Standard Ed25519 Compatibility (RFC 8032):
+//   - msg: Should be the ORIGINAL message bytes converted to *big.Int
+//   - DO NOT pre-hash the message with SHA-256
+//   - The library will use SHA-512 internally as per RFC 8032
+//   - Example: msg := new(big.Int).SetBytes(originalMessageBytes)
+//
+// This implementation is now compatible with standard Ed25519 verification
+// and can be used on blockchains that support Ed25519.
 func NewLocalParty(
 	msg *big.Int,
 	params *tss.Parameters,
